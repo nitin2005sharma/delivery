@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Delivery Optimization</title>
+
+    <!-- External CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+
+    <style>
+        /* Basic styling for modals */
+        .modal {
+            display: none; 
+            position: fixed; 
+            z-index: 2000; 
+            left: 0; top: 0; width: 100%; height: 100%; 
+            overflow: auto; background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe; 
+            margin: 10% auto; 
+            padding: 20px; 
+            border: 1px solid #888; 
+            width: 300px; 
+            border-radius: 8px;
+        }
+        .close {
+            color: #aaa; 
+            float: right; 
+            font-size: 28px; 
+            font-weight: bold; 
+            cursor: pointer;
+        }
+        .close:hover, .close:focus {
+            color: black;
+        }
+
+        /* Show delivery section only if logged in */
+        #deliverySection {
+            display: none;
+        }
+
+        /* Existing styles */
+        .autocomplete-container {
+            position: relative;
+            margin-bottom: 15px;
+        }
+        .suggestions {
+            border: 1px solid #ccc;
+            max-height: 150px;
+            overflow-y: auto;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background-color: white;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .suggestions div {
+            padding: 8px;
+            cursor: pointer;
+        }
+        .suggestions div:hover {
+            background-color: #f0f0f0;
+        }
+        #map {
+            height: 500px;
+            width: 100%;
+            margin-top: 20px;
+            border: 1px solid #ccc;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="password"], select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #averageTimeDisplay {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Delivery Optimization</h1>
+
+    <!-- Login / Signup Buttons -->
+    <div id="authButtons">
+        <button id="showLoginBtn">Login</button>
+        <button id="showSignupBtn">Sign Up</button>
+    </div>
+
+    <div id="logoutSection" style="display:none;">
+        <span id="welcomeUser"></span>
+        <button id="logoutBtn">Logout</button>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="closeLogin">&times;</span>
+            <h2>Login</h2>
+            <form id="loginForm">
+                <label for="loginUsername">Username</label>
+                <input type="text" id="loginUsername" name="username" required />
+                <label for="loginPassword">Password</label>
+                <input type="password" id="loginPassword" name="password" required />
+                <button type="submit">Login</button>
+            </form>
+            <p>Don't have an account? <a href="#" id="switchToSignup">Sign Up</a></p>
+            <p id="loginError" style="color:red;"></p>
+        </div>
+    </div>
+
+    <!-- Signup Modal -->
+    <div id="signupModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="closeSignup">&times;</span>
+            <h2>Sign Up</h2>
+            <form id="signupForm">
+                <label for="signupUsername">Username</label>
+                <input type="text" id="signupUsername" name="username" required />
+                <label for="signupPassword">Password</label>
+                <input type="password" id="signupPassword" name="password" required />
+                <button type="submit">Sign Up</button>
+            </form>
+            <p>Already have an account? <a href="#" id="switchToLogin">Login</a></p>
+            <p id="signupError" style="color:red;"></p>
+        </div>
+    </div>
+
+    <!-- Delivery Features Section (shown only when logged in) -->
+    <div id="deliverySection">
+        <!-- Route Input Form -->
+        <form id="routeForm">
+            <div class="autocomplete-container">
+                <label for="pickup">Pickup Location:</label>
+                <input type="text" id="pickup" name="pickup" autocomplete="off" />
+                <div id="pickupSuggestions" class="suggestions"></div>
+            </div>
+
+            <div class="autocomplete-container">
+                <label for="dropoff">Drop-off Location:</label>
+                <input type="text" id="dropoff" name="dropoff" autocomplete="off" />
+                <div id="dropoffSuggestions" class="suggestions"></div>
+            </div>
+
+            <label for="algorithm">Choose Algorithm:</label>
+            <select id="algorithm" name="algorithm">
+                <option value="dijkstra">Dijkstra</option>
+                <option value="astar">A*</option>
+                <option value="tsp">TSP</option>
+            </select>
+
+            <button type="button" id="optimizeRouteBtn">Optimize Route</button>
+        </form>
+
+        <!-- Map Display -->
+        <div id="map"></div>
+
+        <!-- Geofence and Time Buttons -->
+        <h3>Geofences</h3>
+        <button id="addGeofenceBtn">Add Geofence</button>
+        <button id="getAvgTimeBtn">Get Average Time</button>
+
+        <!-- Stats Output -->
+        <div id="averageTimeDisplay"></div>
+        <div id="geofenceList"></div>
+    </div>
+
+    <!-- Leaflet JS and Plugins -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+    <!-- Main Script -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
